@@ -35,6 +35,26 @@ public sealed class SpeechEngine(VoiceCatalog catalog)
     private static readonly SemaphoreSlim SynthesisLock = new(1, 1);
 
     /// <summary>
+    /// 声ごとに 1 つ作って使い回す合成器。
+    /// <b><see cref="SynthesisLock"/> を持っている間だけ触ってよい。</b>
+    ///
+    /// リクエストごとに <c>new</c> していた頃は、**生成と破棄だけで 19〜23 ms** かかっていた。
+    /// 20 文字の合成が 41.8 ms だったので、**半分以上が合成以外**だった（docs/03 §7.2 に実測）。
+    ///
+    /// 1 つを使い回して <c>Voice</c> を差し替える手もあるが、それはやらない。
+    /// 代入そのものは 0.001 ms でも、**次の合成が 2 倍以上遅くなる**（内部でエンジンを
+    /// 切り替えている）。20 文字・3 声を巡回した実測では 50.4 → 33.0 ms にしかならず、
+    /// 声ごとに持つと 14.3 ms まで落ちた。
+    ///
+    /// 1 つあたり約 1.1 MB。**使われた声の分しか作らない**ので上限は設けていない。
+    ///
+    /// lock と同じく static なのは、合成がプロセス内で 1 本しか走らない以上、
+    /// 合成器もプロセスに 1 組で足りるから。寿命を lock と揃えておくと
+    /// 「lock の下でのみ触る」という条件が読み手に見える。
+    /// </summary>
+    private static readonly Dictionary<string, SpeechSynthesizer> Synthesizers = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// <c>SpeakingRate</c> の下限。**実測値**（ドキュメントは 0.5 と書いているが、
     /// 0.2 まで連続に効く。長さが 1/rate に比例し、有声区間の割合も変わらない）。
     ///
@@ -87,8 +107,7 @@ public sealed class SpeechEngine(VoiceCatalog catalog)
         await SynthesisLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // リクエストごとに作って捨てる。使い回しは「遅い」と分かってからにする（docs/08 §3）
-            using var synthesizer = new SpeechSynthesizer { Voice = systemVoice };
+            var synthesizer = SynthesizerFor(systemVoice);
             synthesizer.Options.SpeakingRate = ClampSpeakingRate(speakingRate);
 
             using var synthesized = await synthesizer
@@ -104,17 +123,55 @@ public sealed class SpeechEngine(VoiceCatalog catalog)
         }
         catch (OperationCanceledException)
         {
-            // 中断は失敗ではない。呼び出し側が握る
+            // 中断は失敗ではない。呼び出し側が握る。
+            //
+            // **ここで合成器を捨てないこと。** 中断された合成は WinRT 側で走り続ける
+            // ことがあり（docs/08 §4.08）、捨てたほうが安全に見える。実際に 150 件を
+            // 60 ms で abort する負荷を、捨てる／捨てないの両方で通したが、
+            // **どちらも落ちず、中断直後に音が 1 回揺れる点まで同じだった**
+            // （docs/03 §6.1）。差が無いので、速いほうを採る
             throw;
         }
         catch (Exception exception) when (exception is not SpeechSynthesisException)
         {
+            // 壊れた合成器を持ち続けると、**1 回の失敗が以後の全リクエストに伝染する**。
+            // 捨てておけば次の呼び出しで作り直される
+            Discard(systemVoice);
+
             throw new SpeechSynthesisException(
                 $"Windows の音声合成が失敗しました（voice={voiceId}）。", exception);
         }
         finally
         {
             SynthesisLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// その声の合成器を返す。無ければ作る。
+    /// <b><see cref="SynthesisLock"/> を持っている側からしか呼ばないこと。</b>
+    /// </summary>
+    private static SpeechSynthesizer SynthesizerFor(VoiceInformation systemVoice)
+    {
+        if (Synthesizers.TryGetValue(systemVoice.Id, out var existing))
+        {
+            return existing;
+        }
+
+        // キーは VoiceInformation.Id（レジストリのフルパス）。表示名や短い id と違って
+        // 声を一意に決めるので、別のカタログから引いた声が混ざっても取り違えない
+        return Synthesizers[systemVoice.Id] = new SpeechSynthesizer { Voice = systemVoice };
+    }
+
+    /// <summary>
+    /// その声の合成器を捨てる。次の呼び出しで作り直される。
+    /// <b><see cref="SynthesisLock"/> を持っている側からしか呼ばないこと。</b>
+    /// </summary>
+    private static void Discard(VoiceInformation systemVoice)
+    {
+        if (Synthesizers.Remove(systemVoice.Id, out var synthesizer))
+        {
+            synthesizer.Dispose();
         }
     }
 

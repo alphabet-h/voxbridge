@@ -130,6 +130,80 @@ public class SpeechEngineTests
     }
 
     [Fact]
+    public async Task 声を切り替えても_それぞれの声で返る()
+    {
+        // 合成器を声ごとに使い回すので、**前の声のまま合成する**バグが入りうる。
+        // 長さでは捕まらない（同じ文なら声が違っても長さは近い）ので中身で見る
+        var catalog = VoiceCatalog.Load();
+        var engine = new SpeechEngine(catalog);
+
+        if (catalog.Voices.Count < 2)
+        {
+            // 声が 1 つしか無い PC では確かめようがない
+            return;
+        }
+
+        var first = catalog.Voices[0];
+        var second = catalog.Voices[1];
+
+        // プロセス最初の 1 回だけ音が違う（docs/03 §6）ので、比較の前に捨てる
+        await engine.WarmUpAsync(first, CancellationToken.None);
+
+        const string text = "声を切り替えて確かめます。";
+        var firstVoice = await engine.SynthesizeAsync(text, first, 1.0, CancellationToken.None);
+        var secondVoice = await engine.SynthesizeAsync(text, second, 1.0, CancellationToken.None);
+        var firstAgain = await engine.SynthesizeAsync(text, first, 1.0, CancellationToken.None);
+
+        Assert.NotEqual(firstVoice, secondVoice);
+
+        // 戻したら最初と同じ音。合成器を切り替えても設定が持ち越されていないこと
+        Assert.Equal(firstVoice, firstAgain);
+    }
+
+    [Fact]
+    public async Task 中断のあとでも合成を続けられる()
+    {
+        // 合成器を使い回すので、**中断の巻き添えで以後のリクエストが壊れる**という
+        // 壊れ方がありうる。中断を挟んだあとも合成できて、かつ安定することを見る。
+        //
+        // **中断の直後 1 回だけは音が変わる。** これは使い回しとは無関係で、
+        // 毎回 new する実装でも同じように起きる（docs/03 §6.1 に実測）。
+        // だから「直後の 1 回」ではなく「その次から安定するか」を検査する
+        var catalog = VoiceCatalog.Load();
+        var engine = new SpeechEngine(catalog);
+        var voice = catalog.Default;
+        Assert.NotNull(voice);
+
+        await engine.WarmUpAsync(voice, CancellationToken.None);
+
+        // 合成の途中で中断する。間に合わずに完走することもあるが、それでも問題はない
+        var longText = string.Concat(Enumerable.Repeat("中断されるかもしれない長い文章です。", 20));
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            using var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(2));
+            try
+            {
+                await engine.SynthesizeAsync(longText, voice, 1.0, cancelled.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // 中断できた。それが狙い
+            }
+        }
+
+        const string text = "中断のあとでも合成を続けられるはずです。";
+
+        // 直後の 1 回は揺れるので、揺れる枠として先に 1 回引く
+        var first = await engine.SynthesizeAsync(text, voice, 1.0, CancellationToken.None);
+        Assert.NotEmpty(first);
+
+        var second = await engine.SynthesizeAsync(text, voice, 1.0, CancellationToken.None);
+        var third = await engine.SynthesizeAsync(text, voice, 1.0, CancellationToken.None);
+
+        Assert.Equal(second, third);
+    }
+
+    [Fact]
     public async Task 中断すると_OperationCanceledException_で返る()
     {
         var catalog = VoiceCatalog.Load();
