@@ -14,6 +14,9 @@ GPU も、モデルのダウンロードも要りません。exe を 1 つ置い
 
 ## 使う
 
+[Releases](../../releases) から `voxbridge.exe` を落として、置いて叩くだけです。
+インストールも設定ファイルもありません。
+
 ```
 voxbridge.exe
 ```

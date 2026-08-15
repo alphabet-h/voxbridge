@@ -16,8 +16,13 @@
     Windows SDK のライセンス条項 §2.a.ii が、同梱した再頒布可能コードを配る条件として
     「自分の著作権表示を出すこと」を要求している（THIRD-PARTY-NOTICES.md を参照）。
   -->
+  <!--
+    配布物のバージョン。**Git のタグと揃えること**（タグ v0.1.0 ⇔ ここが 0.1.0）。
+    ここを書かないと exe が 1.0.0 と名乗り、「どのタグの exe か」が追えなくなる。
+  -->
   <PropertyGroup>
     <Product>voxbridge</Product>
+    <Version>0.1.0</Version>
     <Copyright>Copyright (c) 2026 koshian</Copyright>
     <Description>OS に最初から入っている音声を OpenAI 互換の HTTP API で喋らせる常駐サーバ</Description>
   </PropertyGroup>
