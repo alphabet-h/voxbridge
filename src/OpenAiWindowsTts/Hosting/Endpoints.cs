@@ -112,7 +112,7 @@ public static class Endpoints
         else
         {
             // 長さが確定していないので size 0 で先にヘッダを返す。
-            // 全部合成してから返すと、約 7,000 文字で接続タイムアウトに届く（docs/02 §4.3）
+            // 全部合成してから返すと、約 13,000 文字で接続タイムアウトに届く（docs/02 §4.3）
             await body.WriteAsync(WavWriter.CreateHeader(WavWriter.UnknownLength), aborted).ConfigureAwait(false);
         }
 

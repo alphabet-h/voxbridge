@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using OpenAiWindowsTts.Audio;
 
 namespace OpenAiWindowsTts.Tests;
@@ -96,6 +98,44 @@ public class ResamplerTests(Xunit.Abstractions.ITestOutputHelper testOutput)
 
         var decibels = 20.0 * Math.Log10(signal / reference);
         Assert.InRange(decibels, -1.0, 1.0);
+    }
+
+    /// <summary>
+    /// 出力そのものを固定する。**リサンプラを速くするときの命綱。**
+    ///
+    /// 「速くなったが音が変わった」は、-103 dB のイメージ抑圧が保たれていても起こりうる
+    /// （係数の並べ替えを間違える、境界の扱いを落とす、など）。
+    /// 実装をいじったらこのハッシュが変わるので、意図しない変化に必ず気づける。
+    ///
+    /// **ハッシュが変わる変更をするときは、まず「変えていい」と判断すること。**
+    /// 判断したうえで新しい値を焼き直し、-103 dB のテストと実際の音も確かめる。
+    /// </summary>
+    [Fact]
+    public void 出力がビット単位で変わっていない()
+    {
+        var input = PseudoRandom(50_000, seed: 20260815);
+
+        var output = Resampler.Upsample3x(input);
+        var digest = Convert.ToHexString(SHA256.HashData(MemoryMarshal.AsBytes<short>(output)));
+
+        testOutput.WriteLine($"出力の SHA-256: {digest}");
+
+        Assert.Equal("84A5A4C868596DEE6D86AA40E3F2447BDE1E1DBFACF7F0507C17D4B4F25BF977", digest);
+    }
+
+    /// <summary>線形合同法。実装をまたいで同じ入力を作るためだけのもの。</summary>
+    private static short[] PseudoRandom(int count, int seed)
+    {
+        var state = (uint)seed;
+        var samples = new short[count];
+
+        for (var i = 0; i < count; i++)
+        {
+            state = (state * 1664525u) + 1013904223u;
+            samples[i] = (short)((state >> 16) - 32768);
+        }
+
+        return samples;
     }
 
     [Fact]
