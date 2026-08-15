@@ -274,6 +274,18 @@ await check('知らないパスは JSON で 404 を返す', async () => {
   expect(typeof body?.error?.message === 'string', 'error.message がありません')
 })
 
+await check('ドットを含むパスの 404 も JSON で返す', async () => {
+  // 引数なしの MapFallback は {*path:nonfile} を使うため、ファイル名に見えるパスに
+  // 一致せず、本文 0 バイト・Content-Type なしの 404 になる（docs/08 §4）
+  for (const path of ['/openapi.json', '/v1/models.json', '/v1/audio/speech.wav']) {
+    const response = await fetch(`${base}${path}`)
+    expect(response.status === 404, `${path} status=${response.status}`)
+
+    const body = await response.json().catch(() => null)
+    expect(body?.error?.code === 'NOT_FOUND', `${path} の本文が契約の形ではありません`)
+  }
+})
+
 // ---- /v1/models, /v1/audio/voices --------------------------
 
 await check('GET /v1/models が 200 を返す', () =>
@@ -370,6 +382,70 @@ await check('範囲外の speed は 400 / INVALID_SPEED', () =>
 
     const body = await response.json()
     expect(body?.error?.code === 'INVALID_SPEED', `code=${body?.error?.code}`)
+  }))
+
+await check('voice はオブジェクトでも受ける', () =>
+  skipIfNotImplemented(async () => {
+    const voices = await (await fetch(`${base}/v1/audio/voices`)).json()
+    const first = voices?.data?.[0]?.id
+    expect(typeof first === 'string', '声の一覧を引けません')
+
+    const response = await assertImplemented(await speak({ input: 'テスト', voice: { id: first } }))
+    expect(response.status === 200, `status=${response.status}`)
+  }))
+
+await check('壊れた JSON は 400 / INVALID_JSON を契約の形で返す', async () => {
+  // 素の Minimal API は本文の無い 400 を返す。契約の形に揃っていること
+  const response = await fetch(`${base}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"input": "壊れ',
+  })
+  expect(response.status === 400, `status=${response.status}`)
+
+  const body = await response.json()
+  expect(body?.error?.code === 'INVALID_JSON', `code=${body?.error?.code}`)
+  expect(typeof body?.detail === 'string', 'detail がありません')
+})
+
+await check('大きすぎる本文は 413 / PAYLOAD_TOO_LARGE を契約の形で返す', async () => {
+  const response = await fetch(`${base}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: 'あ'.repeat(3_000_000) }),
+  })
+  expect(response.status === 413, `status=${response.status}`)
+
+  const body = await response.json()
+  expect(body?.error?.code === 'PAYLOAD_TOO_LARGE', `code=${body?.error?.code}`)
+})
+
+await check('Authorization ヘッダが付いていても弾かない', () =>
+  skipIfNotImplemented(async () => {
+    // 認証は実装していないが、付けてくるクライアントがいる（docs/02 §10）
+    const response = await assertImplemented(await fetch(`${base}/v1/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer dummy' },
+      body: JSON.stringify({ input: 'テスト' }),
+    }))
+    expect(response.status === 200, `status=${response.status}`)
+  }))
+
+await check('長文はヘッダを先に返す（チャンク転送）', () =>
+  skipIfNotImplemented(async () => {
+    // 全部合成してからヘッダを返すと、長文で接続タイムアウトを踏む（docs/02 §4.3）
+    const long = 'これはチャンク転送を確かめるための文章です。'.repeat(80)
+
+    const started = Date.now()
+    const response = await assertImplemented(await speak({ input: long }))
+    const headerMs = Date.now() - started
+
+    expect(response.status === 200, `status=${response.status}`)
+    expect(response.headers.get('content-length') === null, 'Content-Length が付いています（分割されていない）')
+    expect(headerMs < 3_000, `ヘッダまで ${headerMs} ms かかりました`)
+
+    const wav = parseWav(Buffer.from(await response.arrayBuffer()))
+    expectCanonical(wav)
   }))
 
 /* ============================================================

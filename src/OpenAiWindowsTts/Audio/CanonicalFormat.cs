@@ -13,8 +13,12 @@ public static class CanonicalFormat
     public const int Channels = 1;
     public const int BitsPerSample = 16;
 
-    /// <summary>Windows の音声合成が吐く生のサンプルレート。ここから <see cref="SampleRate"/> へ上げる。</summary>
+    /// <summary>Windows の音声合成が吐く生の形式。ここから <see cref="SampleRate"/> へ上げる。</summary>
     public const int SourceSampleRate = 16_000;
+
+    public const int SourceChannels = 1;
+
+    public const int SourceBitsPerSample = 16;
 
     /// <summary>整数比なので、ポリフェーズ FIR が使える（<c>docs/02</c> §5）。</summary>
     public const int UpsampleFactor = SampleRate / SourceSampleRate;

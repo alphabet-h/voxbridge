@@ -11,60 +11,93 @@ namespace OpenAiWindowsTts.Speech;
 public sealed record InstalledVoice(string Id, string DisplayName, string Language, string Gender);
 
 /// <summary>
-/// <b>WinRT に触ってよいのはこの名前空間だけ。</b>
-/// 他所に散ると、テストが書けなくなり、Windows 以外での検証も永久に不可能になる。
+/// この PC の声の一覧。<b>起動時に一度だけ WinRT を読む。</b>
+///
+/// <b>WinRT に触ってよいのはこの名前空間だけ。</b> <c>VoiceInformation</c> をここから外へ出さない。
+/// 外へ漏れると、テストが書けなくなり、実装のどこが Windows 依存なのかも追えなくなる。
 /// </summary>
-public static class VoiceCatalog
+public sealed class VoiceCatalog
 {
-    /// <summary>この PC に入っている声を全部返す。言語での絞り込みはしない。</summary>
-    public static IReadOnlyList<InstalledVoice> Installed()
+    private readonly Dictionary<string, VoiceInformation> _systemVoices;
+
+    private VoiceCatalog(
+        IReadOnlyList<InstalledVoice> voices,
+        InstalledVoice? defaultVoice,
+        Dictionary<string, VoiceInformation> systemVoices)
+    {
+        Voices = voices;
+        Default = defaultVoice;
+        _systemVoices = systemVoices;
+    }
+
+    public IReadOnlyList<InstalledVoice> Voices { get; }
+
+    /// <summary>
+    /// Windows の既定の声（表示言語に追随する）。
+    ///
+    /// ここで「日本語の声を優先」のような細工をしないこと。起動ログに出ている声と
+    /// 実際に喋る声が食い違ったときに理由が追えなくなる。選びたいときは <c>--voice</c> で明示する。
+    /// </summary>
+    public InstalledVoice? Default { get; }
+
+    /// <summary>WinRT を読んで一覧を作る。言語での絞り込みはしない。</summary>
+    public static VoiceCatalog Load()
     {
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var voices = new List<InstalledVoice>();
+        var systemVoices = new Dictionary<string, VoiceInformation>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var info in SpeechSynthesizer.AllVoices)
+        foreach (var information in SpeechSynthesizer.AllVoices)
         {
+            var id = UniqueId(information.DisplayName, used);
+
             voices.Add(new InstalledVoice(
-                Id: UniqueId(info.DisplayName, used),
-                DisplayName: info.DisplayName,
-                Language: info.Language,
-                Gender: info.Gender.ToString()));
+                Id: id,
+                DisplayName: information.DisplayName,
+                Language: information.Language,
+                Gender: information.Gender.ToString()));
+
+            systemVoices[id] = information;
         }
 
-        return voices;
-    }
-
-    /// <summary>
-    /// 既定の声。<b>Windows の既定をそのまま使う</b>（表示言語に追随する）。
-    /// ここで「日本語の声を優先」のような細工をすると、起動ログに出ている声と
-    /// 実際に喋る声が食い違ったときに理由が追えなくなる。選びたいときは <c>--voice</c> で明示する。
-    /// </summary>
-    public static InstalledVoice? Default(IReadOnlyList<InstalledVoice> voices)
-    {
-        if (voices.Count == 0)
+        InstalledVoice? defaultVoice = null;
+        if (voices.Count > 0)
         {
-            return null;
+            var systemDefault = SpeechSynthesizer.DefaultVoice?.DisplayName;
+            defaultVoice = voices.FirstOrDefault(voice => voice.DisplayName == systemDefault) ?? voices[0];
         }
 
-        var systemDefault = SpeechSynthesizer.DefaultVoice?.DisplayName;
-        return voices.FirstOrDefault(voice => voice.DisplayName == systemDefault) ?? voices[0];
+        return new VoiceCatalog(voices, defaultVoice, systemVoices);
     }
 
     /// <summary>
-    /// 短い id か表示名で声を引く。<c>selector</c> が空なら既定の声。
+    /// 声を引く。<paramref name="selector"/> が空なら既定の声。
     /// 見つからなければ null（呼び出し側が 400 / <c>VOICE_NOT_FOUND</c> にする）。
     /// </summary>
-    public static InstalledVoice? Resolve(IReadOnlyList<InstalledVoice> voices, string? selector)
+    public InstalledVoice? Resolve(string? selector) =>
+        string.IsNullOrWhiteSpace(selector) ? Default : ResolveIn(Voices, selector);
+
+    /// <summary>
+    /// 一覧から短い id か表示名で引く純粋な処理。<b>空の selector では既定に落とさない</b> —
+    /// 既定へ落とすかどうかは呼び出し側の判断。
+    /// </summary>
+    public static InstalledVoice? ResolveIn(IReadOnlyList<InstalledVoice> voices, string? selector)
     {
         if (string.IsNullOrWhiteSpace(selector))
         {
-            return Default(voices);
+            return null;
         }
 
         var wanted = selector.Trim();
         return voices.FirstOrDefault(voice => string.Equals(voice.Id, wanted, StringComparison.OrdinalIgnoreCase))
             ?? voices.FirstOrDefault(voice => string.Equals(voice.DisplayName, wanted, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>WinRT の声。<b>この名前空間の外へ渡さないこと。</b></summary>
+    internal VoiceInformation SystemVoice(InstalledVoice voice) =>
+        _systemVoices.TryGetValue(voice.Id, out var information)
+            ? information
+            : throw new InvalidOperationException($"この一覧に属さない声です: {voice.Id}");
 
     /// <summary>
     /// 表示名から URL に載せられる短い id を作る。

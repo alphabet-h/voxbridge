@@ -31,10 +31,10 @@ if (options.ShowHelp)
 //    リクエストを受けてから初めて失敗するより、起動時に落ちたほうが原因が分かる。
 // ============================================================
 
-IReadOnlyList<InstalledVoice> installedVoices;
+VoiceCatalog catalog;
 try
 {
-    installedVoices = VoiceCatalog.Installed();
+    catalog = VoiceCatalog.Load();
 }
 catch (Exception exception)
 {
@@ -44,7 +44,7 @@ catch (Exception exception)
 
 if (options.ListVoices)
 {
-    foreach (var voice in installedVoices)
+    foreach (var voice in catalog.Voices)
     {
         Console.Out.WriteLine($"{voice.Id,-18}{voice.DisplayName}  ({voice.Language}, {voice.Gender})");
     }
@@ -52,19 +52,34 @@ if (options.ListVoices)
     return 0;
 }
 
-if (installedVoices.Count == 0)
+if (catalog.Voices.Count == 0)
 {
     Console.Error.WriteLine("この PC には音声合成の声が 1 つも入っていません。");
     Console.Error.WriteLine("設定 > 時刻と言語 > 音声認識 から音声パッケージを追加してください。");
     return 3;
 }
 
-var defaultVoice = VoiceCatalog.Resolve(installedVoices, options.Voice);
+var defaultVoice = catalog.Resolve(options.Voice);
 if (defaultVoice is null)
 {
     Console.Error.WriteLine($"--voice '{options.Voice}' に一致する声がありません。");
-    Console.Error.WriteLine($"使える id: {string.Join(", ", installedVoices.Select(voice => voice.Id))}");
+    Console.Error.WriteLine($"使える id: {string.Join(", ", catalog.Voices.Select(voice => voice.Id))}");
     return 2;
+}
+
+// ここで 1 回だけ捨て合成をする。
+// プロセス最初の 1 回は、同じ入力・同じ声でも 2 回目以降と違う音が返る
+// （長さは同じなので自動テストでは捕まらない）。利用者の最初のリクエストを
+// その 1 回目にしないため。失敗しても起動は続ける — 合成できない PC でも
+// /health と --list-voices は答えられたほうがいい。
+var engine = new SpeechEngine(catalog);
+try
+{
+    await engine.WarmUpAsync(defaultVoice, CancellationToken.None);
+}
+catch (Exception exception)
+{
+    Console.Error.WriteLine($"警告: 起動時のウォームアップ合成に失敗しました: {exception.Message}");
 }
 
 // ============================================================
@@ -81,28 +96,38 @@ builder.Services.Configure<ConsoleLoggerOptions>(
     console => console.LogToStandardErrorThreshold = LogLevel.Trace);
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
+if (options.Verbose)
+{
+    // 自分のカテゴリだけ上げる。全体を Information にすると
+    // ASP.NET Core のリクエストログで溢れて、肝心の 1 行が埋もれる
+    builder.Logging.AddFilter(Endpoints.SynthesisLogCategory, LogLevel.Information);
+    builder.Logging.AddFilter(ContractErrorMiddleware.LogCategory, LogLevel.Debug);
+}
+
 builder.WebHost.UseUrls($"http://{options.Host}:{options.Port}");
+builder.WebHost.ConfigureKestrel(kestrel =>
+{
+    // 既定の 30 MB は、テキストを送るだけの API には広すぎる（docs/02 §3）
+    kestrel.Limits.MaxRequestBodySize = ServerSettings.MaxRequestBodyBytes;
+});
 
 builder.Services.ConfigureHttpJsonOptions(json => ContractJson.Apply(json.SerializerOptions));
 
+var settings = new ServerSettings(
+    DefaultVoice: defaultVoice,
+    MaxConcurrentSynthesis: options.Concurrency,
+    QueueTimeout: options.QueueTimeout,
+    Verbose: options.Verbose);
+
+builder.Services.AddSingleton(catalog);
+builder.Services.AddSingleton(settings);
+builder.Services.AddSingleton(engine);
+builder.Services.AddSingleton(new SynthesisGate(options.Concurrency, options.QueueTimeout));
+
 var app = builder.Build();
 
-app.MapGet("/", () => Results.Text(CommandLineOptions.Help, "text/plain; charset=utf-8"));
-
-app.MapGet("/health", () => Results.Ok(HealthResponse.Create(
-    voiceDisplayName: defaultVoice.DisplayName,
-    maxConcurrentSynthesis: options.Concurrency,
-    running: 0,
-    queued: 0)));
-
-// 未実装のパスも契約どおりの形で返す。HTML のエラーページを返すと、
-// JSON を前提にしたクライアントのパーサが本文ごと画面に出す。
-app.MapFallback((HttpContext http) => Results.Json(
-    ErrorResponse.Create(
-        ErrorCodes.NotFound,
-        $"{http.Request.Method} {http.Request.Path} は未実装です",
-        "実装済みのパスは GET /health だけです。"),
-    statusCode: StatusCodes.Status404NotFound));
+app.UseContractErrors();
+Endpoints.MapAll(app, CommandLineOptions.Help);
 
 // ============================================================
 // 4. 起動
@@ -119,7 +144,7 @@ Console.Out.WriteLine(
     $"  voice={defaultVoice.DisplayName} ({defaultVoice.Language})" +
     $"  {CanonicalFormat.SampleRate}Hz/{CanonicalFormat.BitsPerSample}bit/{CanonicalFormat.Channels}ch" +
     $"  concurrency={options.Concurrency}");
-Console.Out.WriteLine($"  この PC の声: {string.Join(", ", installedVoices.Select(voice => voice.Id))}");
+Console.Out.WriteLine($"  この PC の声: {string.Join(", ", catalog.Voices.Select(voice => voice.Id))}");
 Console.Out.Flush();
 
 await app.WaitForShutdownAsync();

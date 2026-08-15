@@ -36,7 +36,7 @@ public class VoiceCatalogTests
     [InlineData(" ichiro ")]
     public void id_でも表示名でも大文字小文字を問わず引ける(string selector)
     {
-        var voice = VoiceCatalog.Resolve(Sample, selector);
+        var voice = VoiceCatalog.ResolveIn(Sample, selector);
 
         Assert.NotNull(voice);
         Assert.Equal("ichiro", voice.Id);
@@ -46,12 +46,42 @@ public class VoiceCatalogTests
     public void 知らない声は_null_を返す()
     {
         // 呼び出し側が 400 / VOICE_NOT_FOUND にする。黙って別の声で喋らせない
-        Assert.Null(VoiceCatalog.Resolve(Sample, "zzz"));
+        Assert.Null(VoiceCatalog.ResolveIn(Sample, "zzz"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void 指定が空なら_ResolveIn_は既定に落とさず_null_を返す(string? selector)
+    {
+        // 「指定なし」と「知らない声」を呼び出し側で区別できるようにしておく。
+        // 混ぜると、voice: none を弾くか既定に落とすかの判断ができなくなる
+        Assert.Null(VoiceCatalog.ResolveIn(Sample, selector));
     }
 
     [Fact]
-    public void 声が_1_つも無ければ既定も_null()
+    public void 空の一覧からは何も引けない()
     {
-        Assert.Null(VoiceCatalog.Default([]));
+        Assert.Null(VoiceCatalog.ResolveIn([], "ayumi"));
+    }
+
+    [Fact]
+    public void この_PC_の声を実際に読める()
+    {
+        // WinRT の projection が動いていることの確認。ここが落ちるなら TFM か SDK の問題
+        var catalog = VoiceCatalog.Load();
+
+        Assert.NotEmpty(catalog.Voices);
+        Assert.NotNull(catalog.Default);
+        Assert.All(catalog.Voices, voice =>
+        {
+            Assert.NotEmpty(voice.Id);
+            Assert.NotEmpty(voice.DisplayName);
+            Assert.NotEmpty(voice.Language);
+        });
+
+        // id は一意でなければならない（voice で引けなくなる）
+        Assert.Equal(catalog.Voices.Count, catalog.Voices.Select(voice => voice.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 }

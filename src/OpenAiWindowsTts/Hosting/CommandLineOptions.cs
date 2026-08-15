@@ -11,12 +11,19 @@ public sealed record CommandLineOptions
     /// </summary>
     public const int DefaultPort = 8288;
 
+    /// <summary>実行枠が空くのを待つ上限（秒）。超えたら 503。</summary>
+    public const int DefaultQueueTimeoutSeconds = 30;
+
     public string Host { get; init; } = "127.0.0.1";
     public int Port { get; init; } = DefaultPort;
     public string? Voice { get; init; }
     public int Concurrency { get; init; } = 1;
+    public int QueueTimeoutSeconds { get; init; } = DefaultQueueTimeoutSeconds;
+    public bool Verbose { get; init; }
     public bool ShowHelp { get; init; }
     public bool ListVoices { get; init; }
+
+    public TimeSpan QueueTimeout => TimeSpan.FromSeconds(QueueTimeoutSeconds);
 
     public const string Help = """
         openai-windows-tts — Windows 内蔵の音声を OpenAI 互換 API で喋らせる常駐サーバ
@@ -30,7 +37,11 @@ public sealed record CommandLineOptions
           --host <addr>          既定 127.0.0.1
           --port <n>             既定 8288。0 を渡すと OS が空きポートを割り当てる
           --voice <id|name>      既定の声。省略すると Windows の既定の声
-          --concurrency <n>      同時に合成する本数（既定 1）
+          --concurrency <n>      同時に受け付けるリクエスト数（既定 1）
+                                 合成そのものは常に 1 本ずつ。Windows の合成エンジンは
+                                 同時に叩くとプロセスごと落ちるため、そこは変えられない
+          --queue-timeout <sec>  実行枠が空くのを待つ上限（既定 30）。超えたら 503
+          --verbose              合成 1 件につき 1 行ログを出す（stderr）
           --list-voices          この PC の声を並べて終了する
           -h, --help             このヘルプ
 
@@ -53,6 +64,8 @@ public sealed record CommandLineOptions
         var port = DefaultPort;
         string? voice = null;
         var concurrency = 1;
+        var queueTimeoutSeconds = DefaultQueueTimeoutSeconds;
+        var verbose = false;
         var showHelp = false;
         var listVoices = false;
 
@@ -62,6 +75,8 @@ public sealed record CommandLineOptions
             Port = port,
             Voice = voice,
             Concurrency = concurrency,
+            QueueTimeoutSeconds = queueTimeoutSeconds,
+            Verbose = verbose,
             ShowHelp = showHelp,
             ListVoices = listVoices,
         };
@@ -95,6 +110,10 @@ public sealed record CommandLineOptions
 
                 case "--list-voices":
                     listVoices = true;
+                    break;
+
+                case "--verbose":
+                    verbose = true;
                     break;
 
                 case "--host":
@@ -138,6 +157,17 @@ public sealed record CommandLineOptions
                         if (!TryParseInt(value, 1, 64, out concurrency))
                         {
                             return Fail(Build(), $"--concurrency の値が不正です: {value ?? "(なし)"}（1〜64）");
+                        }
+
+                        break;
+                    }
+
+                case "--queue-timeout":
+                    {
+                        var value = TakeValue();
+                        if (!TryParseInt(value, 1, 3600, out queueTimeoutSeconds))
+                        {
+                            return Fail(Build(), $"--queue-timeout の値が不正です: {value ?? "(なし)"}（1〜3600 秒）");
                         }
 
                         break;
