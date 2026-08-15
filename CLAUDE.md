@@ -28,6 +28,7 @@ Windows に最初から入っている音声を、OpenAI 互換の HTTP API で�
 | `powershell -NoProfile -File scripts\check.ps1` | BOM → ビルド → 整形 → テスト → 契約照合。**コミット前に必ず通す** |
 | `powershell -NoProfile -File scripts\check.ps1 -Fix` | 整形の差分をその場で直す |
 | `dotnet run --project src/OpenAiWindowsTts -- --port 8288` | 起動 |
+| `dotnet run --project src/OpenAiWindowsTts -- --port 8288 --verbose` | 合成 1 件につき 1 行ログを出して起動 |
 | `dotnet run --project src/OpenAiWindowsTts -- --list-voices` | この PC の声を見る |
 | `node scripts/smoke.mjs` | サーバを起動して契約適合を叩く |
 | `dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true` | 配布用の単一 exe |
@@ -49,16 +50,19 @@ Windows に最初から入っている音声を、OpenAI 互換の HTTP API で�
 - `--port 0` を渡すと OS が空きポートを割り当てる。テストと CI はこれを使う
 - **`dotnet run` は子プロセスを挟む。** 起動したサーバを確実に止めたいときは
   `bin\...\openai-windows-tts.exe` を直接叩く
+- **リクエスト本文を Minimal API の自動バインドで受けない。** JSON が壊れているとき
+  例外を投げずに**本文の無い 400** を書いて打ち切るので、契約の形で返せなくなる
+  （`docs/08` §4.1）。`JsonSerializer.DeserializeAsync` で自分で読む
 - `PublishSingleFile` などの publish 用プロパティを `.csproj` に書かないこと。
   書くと `dotnet build` と `dotnet test` まで publish 都合の挙動になる
 
 ## 層と守ること
 
 ```
-Program.cs                起動オプションの解釈 → 配線 → ルーティング
-  ├─ Hosting/             起動オプション。ASP.NET Core の設定機構は使わない
-  ├─ Contract/            HTTP に出入りする JSON の形。DTO だけ
-  ├─ Speech/              WinRT の音声合成。★ここだけが WinRT を知る
+Program.cs                起動オプションの解釈 → 声の解決 → 配線
+  ├─ Hosting/             起動オプション・ルーティング・実行枠・エラーの整形
+  ├─ Contract/            HTTP に出入りする JSON の形と、その検証
+  ├─ Speech/              WinRT の音声合成と文の分割。★ここだけが WinRT を知る
   └─ Audio/               WAV とリサンプル。★純粋なコードだけ
 ```
 
@@ -89,6 +93,16 @@ Program.cs                起動オプションの解釈 → 配線 → ルー�
 8. **`voice` に `none` が来てもエラーにしない。** 「指定なし」の意味で送ってくる実装がある。
    ここで弾くと全リクエストが落ちる。逆に、**指定された声が見つからないときは黙って
    既定に落とさず 400 を返す**（[docs/02](docs/02-http-contract.md) §3.3）。
+
+9. **Windows の合成を同時に呼ばない。`Speech/SpeechEngine` の `SemaphoreSlim` を外さない。**
+   同時に叩くと例外ではなく `__fastfail` で**プロセスごと落ちる**。try/catch にもログにも
+   かからないので、原因が分かるまで「たまにサーバが消える」としか見えない
+   （[docs/03](docs/03-windows-speech.md) §5 に実測）。**設定で緩められるようにしないこと。**
+
+10. **話速のクランプ下限を 0.5 に戻さない。** 実測では 0.2 まで効く。0.5 にすると
+    契約上の有効値 `speed: 0.25` が `0.5` と同一の音になり、
+    **防ごうとしていた「設定できたのに効かない」をクランプ自身が作る**
+    （[docs/03](docs/03-windows-speech.md) §4）。
 
 ## いまやらないこと
 

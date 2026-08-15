@@ -36,7 +36,9 @@ OpenAI 互換のクライアントからは、接続先の URL を `http://127.0
 --host <addr>          既定 127.0.0.1
 --port <n>             既定 8288。0 を渡すと OS が空きポートを割り当てる
 --voice <id|name>      既定の声。省略すると Windows の既定の声
---concurrency <n>      同時に合成する本数（既定 1）
+--concurrency <n>      同時に受け付けるリクエスト数（既定 1）
+--queue-timeout <sec>  実行枠が空くのを待つ上限（既定 30）。超えたら 503
+--verbose              合成 1 件につき 1 行ログを出す（stderr）
 --list-voices          この PC の声を並べて終了する
 -h, --help             ヘルプ
 ```
@@ -69,7 +71,11 @@ Windows の音声合成に対応する機能が無いものは、**受け取っ�
 | 話し方の文章指定（`caption`） | ありません |
 | `seed` / ステップ数 / CFG | 生成モデルではないので概念がありません |
 | mp3 / flac での出力 | wav のみ返します |
-| SSE での進捗通知 | 合成が速い（1 文 100 ms 前後）ので刻んでいません |
+| SSE での進捗通知 | 合成が速い（**2.2 ms/文字**、3,000 文字で 6.6 秒）ので刻んでいません |
+| 認証・TLS | ありません。ループバック前提です |
+
+長い文章を渡すと、合成が終わる前にヘッダを返して流し始めます（チャンク転送）。
+3,000 文字でもヘッダは **0.5 秒**以内に返るので、接続タイムアウトを踏みません。
 
 ## 動作環境
 
@@ -86,12 +92,14 @@ dotnet test
 dotnet run --project src/OpenAiWindowsTts -- --port 8288
 ```
 
-配布用の単一 exe:
+配布用の単一 exe（**52 MB**・.NET ランタイム同梱）:
 
 ```
 dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
+  -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
 ```
+
+初回起動だけ圧縮の展開に 2.4 秒ほどかかります（2 回目以降は 0.4 秒）。
 
 設計と契約は [docs/](docs/) にあります。開発の作法は [CLAUDE.md](CLAUDE.md)。
 
