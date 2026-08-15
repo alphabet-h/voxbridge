@@ -291,10 +291,10 @@ Windows 側から受け取る WAV は `fmt` チャンク長 18 の**46 バイト
 {
   "object": "list",
   "data": [
-    { "id": "windows-speech", "object": "model", "created": 0, "owned_by": "openai-windows-tts" },
-    { "id": "ayumi",  "object": "model", "created": 0, "owned_by": "openai-windows-tts" },
-    { "id": "haruka", "object": "model", "created": 0, "owned_by": "openai-windows-tts" },
-    { "id": "ichiro", "object": "model", "created": 0, "owned_by": "openai-windows-tts" }
+    { "id": "windows-speech", "object": "model", "created": 0, "owned_by": "voxbridge" },
+    { "id": "ayumi",  "object": "model", "created": 0, "owned_by": "voxbridge" },
+    { "id": "haruka", "object": "model", "created": 0, "owned_by": "voxbridge" },
+    { "id": "ichiro", "object": "model", "created": 0, "owned_by": "voxbridge" }
   ]
 }
 ```

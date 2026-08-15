@@ -78,14 +78,14 @@ $relative = $full.Substring($repoRoot.Length).TrimStart('\', '/').Replace('\', '
 if ($relative -match '/(bin|obj)/') { exit 0 }
 
 $isCSharp = $relative -like '*.cs'
-$touchesContract = ($relative -like 'src/OpenAiWindowsTts/Contract/*.cs') -or
+$touchesContract = ($relative -like 'src/VoxBridge/Contract/*.cs') -or
                    ($relative -eq 'docs/02-http-contract.md')
 
 if (-not $isCSharp -and -not $touchesContract) { exit 0 }
 
 # ---- 3. 多重起動を避ける ------------------------------------
 
-$lockPath = Join-Path $env:TEMP 'openai-windows-tts.cs-post-edit.lock'
+$lockPath = Join-Path $env:TEMP 'voxbridge.cs-post-edit.lock'
 $lock = $null
 $deadline = (Get-Date).AddSeconds(3)
 
@@ -143,7 +143,7 @@ try {
         if ($contract.ExitCode -ne 0) {
             $problems.Add(
                 "契約の照合が通りません。docs/02-http-contract.md §6.2 の表と" +
-                " src/OpenAiWindowsTts/Contract/ErrorCodes.cs の両方を直してください:`n" +
+                " src/VoxBridge/Contract/ErrorCodes.cs の両方を直してください:`n" +
                 $contract.Output.Trim())
         }
     }

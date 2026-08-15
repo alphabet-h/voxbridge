@@ -4,7 +4,7 @@
       "PowerShell(dotnet build:*)",
       "PowerShell(dotnet test:*)",
       "PowerShell(dotnet format:*)",
-      "PowerShell(dotnet run --project src/OpenAiWindowsTts:*)",
+      "PowerShell(dotnet run --project src/VoxBridge:*)",
       "PowerShell(dotnet publish:*)",
       "PowerShell(node scripts/:*)",
       "PowerShell(powershell -NoProfile -File scripts\\check.ps1:*)",

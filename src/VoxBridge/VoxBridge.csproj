@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    TargetFramework に Windows SDK のバージョンを付けると、CsWinRT の projection が入り
+    Windows.Media.SpeechSynthesis に直接触れるようになる。ここを素の net9.0 に戻すと
+    Speech/ が丸ごとコンパイルできなくなる。
+
+    RuntimeIdentifier / PublishSingleFile / SelfContained はここに書かない。
+    書くと dotnet build や dotnet test まで publish 都合の挙動に引きずられる。
+    配布は README の dotnet publish のコマンドラインで指定する。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>VoxBridge</RootNamespace>
+    <!-- 配布物のファイル名。利用者が置いて叩くのはこの名前の exe になる -->
+    <AssemblyName>voxbridge</AssemblyName>
+    <!-- ICU を同梱しない。単一 exe が数 MB 軽くなる。文化圏依存の書式化はこのサーバでは使わない -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

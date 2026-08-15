@@ -14,7 +14,7 @@ dotnet build
 node scripts/smoke.mjs
 ```
 
-ビルドを先に通すこと。`smoke.mjs` は `src/OpenAiWindowsTts/bin/{Debug,Release}/*/openai-windows-tts.exe`
+ビルドを先に通すこと。`smoke.mjs` は `src/VoxBridge/bin/{Debug,Release}/*/voxbridge.exe`
 を探す。見つからなければ終了コード 2 で「先に dotnet build を通してください」と言う。
 
 | オプション | |

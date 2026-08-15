@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DOC = join(ROOT, 'docs', '02-http-contract.md')
-const SOURCE = join(ROOT, 'src', 'OpenAiWindowsTts', 'Contract', 'ErrorCodes.cs')
+const SOURCE = join(ROOT, 'src', 'VoxBridge', 'Contract', 'ErrorCodes.cs')
 
 const BEGIN = '<!-- check-contract:error-codes:begin -->'
 const END = '<!-- check-contract:error-codes:end -->'
@@ -121,7 +121,7 @@ if (docText !== null && sourceText !== null) {
   if (missingInSource.length > 0) {
     problems.push(
       `表にあるのに ErrorCodes.cs に無いコード: ${missingInSource.join(', ')}\n` +
-        `  src/OpenAiWindowsTts/Contract/ErrorCodes.cs に const を足してください。`,
+        `  src/VoxBridge/Contract/ErrorCodes.cs に const を足してください。`,
     )
   }
   if (missingInDoc.length > 0) {

@@ -119,7 +119,7 @@ Microsoft のドキュメントは有効域を **0.5〜6.0** と書いていま�
 同時に叩くと、例外ではなく **`__fastfail`** でプロセスごと落ちます。
 
 ```
-Faulting application name: openai-windows-tts.exe
+Faulting application name: voxbridge.exe
 Faulting module name: MSTTSEngine_OneCore.dll, version: 10.3.21207.0
 Exception code: 0xc0000409          ← STATUS_STACK_BUFFER_OVERRUN
 ```

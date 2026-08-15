@@ -34,7 +34,7 @@
 ### 1.1 配布（2026-08-15 実施）
 
 ```
-dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true `
+dotnet publish src/VoxBridge -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
@@ -45,7 +45,7 @@ dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true 
 | **WinRT の projection** | **動く。** 単一 exe から 3 声とも引ける |
 | 初回起動（展開あり） | **2,436 ms** |
 | 2 回目以降（展開キャッシュ後） | **400 ms** |
-| 契約適合スモーク | `node scripts/smoke.mjs --exe publish\openai-windows-tts.exe` で **21 項目すべて OK** |
+| 契約適合スモーク | `node scripts/smoke.mjs --exe publish\voxbridge.exe` で **21 項目すべて OK** |
 
 初回だけ 2.4 秒かかるのは圧縮の展開ぶん。常駐サーバなので 1 回だけ。
 `publish/` は `.gitignore` 済み。
@@ -116,7 +116,34 @@ Windows の既定（`SpeechSynthesizer.DefaultVoice`）をそのまま使う。
 Minimal API の自動バインドを使わず、`JsonSerializer.DeserializeAsync` で読んでいます。
 理由は §4.1。
 
-### 3.9 リサンプラはここで打ち止め（2026-08-15 に測って決めた）
+### 3.9 名前を `voxbridge` にした（2026-08-15）
+
+以前の名前には `Windows` と `OpenAI` が入っていました。**どちらも他社の商標**です。
+
+[Microsoft の商標ガイドライン](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general)は
+「Microsoft のブランド資産を製品名・アプリ名・ドメイン名に使わない」と明記する一方、
+「〜と互換性がある」という**参照的な記述は明示的に許可**しています。
+
+さらに、このプロジェクトは**単一 exe に Microsoft の再頒布可能コードを同梱する**ので、
+Windows SDK ライセンス条項 §2.a.iii の「製品名に Microsoft の商標を使わない」が
+**契約上の義務として効きます**（`THIRD-PARTY-NOTICES.md`）。
+
+名前に `Windows` を含むサードパーティ製ツールは実在しますが、
+それらは Microsoft の DLL を配っていないので、この契約の当事者ではありません。
+**同梱するかどうかが分かれ目です。**
+
+README では「Windows の音声合成を使う」という参照的な書き方にとどめてあります。
+
+### 3.10 ライセンスは MIT。ただし配布物には条件が付く（2026-08-15）
+
+- **コードは MIT**（`LICENSE`）
+- **単一 exe には Microsoft のコンポーネントが入る。** 再頒布は明示的に認められているが、
+  著作権表示・未改変・商標の 3 点が条件（`THIRD-PARTY-NOTICES.md`）
+- `Directory.Build.props` の `Copyright` は**その条件を満たすためのもの。消さないこと**
+- **生成した音声の利用範囲は Microsoft が明示していない。** 一次資料に許可も禁止も無かった。
+  README に「各自で確認を」と書いてある。**「制限なし」と書かないこと** — 根拠が無い
+
+### 3.11 リサンプラはここで打ち止め（2026-08-15 に測って決めた）
 
 **先に判断の基準を決めてから測りました**（合成に対して 2 割未満なら直さない / 2〜5 割なら
 ビット単位で同じ結果を保つ範囲だけ / 5 割超なら確保の削減まで）。
@@ -250,7 +277,7 @@ PowerShell は native コマンドの stderr を `ErrorRecord` に包みます�
 
 ### 4.10 stdout の 1 行目を機械可読にするため、ログは全部 stderr へ出している
 
-`Now listening on: ...` のような行が先に出ると `OPENAI_WINDOWS_TTS_PORT=` が 1 行目でなくなります。
+`Now listening on: ...` のような行が先に出ると `VOXBRIDGE_PORT=` が 1 行目でなくなります。
 `ConsoleLoggerOptions.LogToStandardErrorThreshold = Trace` で全レベルを stderr へ回しています。
 **ログを stdout に戻すと `scripts/smoke.mjs` が壊れます。**
 
@@ -261,4 +288,4 @@ PowerShell は native コマンドの stderr を `ErrorRecord` に包みます�
 | 声ごとの発音辞書 | Windows 側にユーザ辞書の口はあるが、サーバから触ると PC 全体に影響する |
 | Windows サービスとして登録 | 「置いて叩くだけ」を壊すので、要望が出るまでやらない |
 | 複数プロセスでの負荷分散 | `--concurrency` で足りなくなってから |
-| ライセンス | README が「未定」のまま。公開するなら決める |
+| リポジトリのフォルダ名 | 中身は `voxbridge` へ改名済みだが、**フォルダ名だけ旧名のまま**。変えるときは Claude 側のプロジェクト記憶（`~/.claude/projects/`）も移す |

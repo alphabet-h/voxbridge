@@ -1,10 +1,12 @@
-# openai-windows-tts
+# voxbridge
 
 **Windows に最初から入っている音声を、OpenAI 互換の HTTP API で喋らせる常駐サーバ。**
 
 GPU も、モデルのダウンロードも要りません。exe を 1 つ置いて叩くだけです。
 
-> **OpenAI とは無関係の別実装です。** `/v1/audio/speech` という API の**形だけ**を合わせています。
+> **OpenAI とも Microsoft とも無関係の、独立した実装です。**
+> `/v1/audio/speech` という API の**形だけ**を合わせ、Windows の音声合成を呼び出しています。
+> どちらの企業からも承認・後援を受けていません。
 
 > **位置づけ**: 高品質な TTS エンジンの代わりではありません。声の質と機能の落差は大きく、
 > 参照音声も、話し方の文章指定も、seed による作り分けもありません。
@@ -13,7 +15,7 @@ GPU も、モデルのダウンロードも要りません。exe を 1 つ置い
 ## 使う
 
 ```
-openai-windows-tts.exe
+voxbridge.exe
 ```
 
 既定で `http://127.0.0.1:8288` を待ち受けます。
@@ -49,7 +51,7 @@ OpenAI 互換のクライアントからは、接続先の URL を `http://127.0
 ### 使える声
 
 ```
-$ openai-windows-tts.exe --list-voices
+$ voxbridge.exe --list-voices
 ayumi             Microsoft Ayumi  (ja-JP, Female)
 haruka            Microsoft Haruka  (ja-JP, Female)
 ichiro            Microsoft Ichiro  (ja-JP, Male)
@@ -89,13 +91,13 @@ Windows の音声合成に対応する機能が無いものは、**受け取っ�
 ```
 dotnet build
 dotnet test
-dotnet run --project src/OpenAiWindowsTts -- --port 8288
+dotnet run --project src/VoxBridge -- --port 8288
 ```
 
 配布用の単一 exe（**52 MB**・.NET ランタイム同梱）:
 
 ```
-dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true `
+dotnet publish src/VoxBridge -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
@@ -105,4 +107,22 @@ dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true 
 
 ## ライセンス
 
-未定。
+**このプロジェクトのコードは [MIT ライセンス](LICENSE)** です。
+
+**配布用の単一 exe には Microsoft のコンポーネントが同梱されます。**
+.NET ランタイムは MIT、Windows SDK の .NET projection
+（`Microsoft.Windows.SDK.NET.dll` / `WinRT.Runtime.dll`）は
+[Windows SDK のライセンス条項](https://aka.ms/WinSDKLicenseURL)が適用されます。
+[再頒布可能ファイルの一覧](https://learn.microsoft.com/en-us/legal/windows-sdk/redist)に
+名指しで挙げられているので**同梱と再頒布は認められています**が、条件が付きます。
+
+詳細は **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)** を読んでください。
+
+### 生成した音声の扱い
+
+**Microsoft は、Windows 内蔵の音声合成が出力した音声データの利用範囲について
+明示していません。** Windows の使用許諾条件にも SDK のライセンス条項にも、
+音声合成の出力に関する条項がありませんでした（2026-08-15 時点で確認）。
+
+**MIT ライセンスはこのプロジェクトのコードにのみ適用され、生成された音声には及びません。**
+商用利用など、用途によってはご自身で Microsoft に確認してください。

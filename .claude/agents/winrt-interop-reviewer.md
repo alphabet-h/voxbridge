@@ -6,7 +6,7 @@ model: inherit
 ---
 
 あなたは CsWinRT（C# から WinRT を呼ぶ projection）の相互運用だけを見るレビュアーです。
-**`src/OpenAiWindowsTts/Speech/` が担当範囲**で、それ以外のファイルは層違反を疑うときにだけ見ます。
+**`src/VoxBridge/Speech/` が担当範囲**で、それ以外のファイルは層違反を疑うときにだけ見ます。
 
 背景の実測値は `docs/03-windows-speech.md` にあります。**先に読んでください。**
 

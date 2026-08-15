@@ -28,8 +28,8 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const EXE_NAME = 'openai-windows-tts.exe'
-const PORT_PREFIX = 'OPENAI_WINDOWS_TTS_PORT='
+const EXE_NAME = 'voxbridge.exe'
+const PORT_PREFIX = 'VOXBRIDGE_PORT='
 const STARTUP_TIMEOUT_MS = 30_000
 
 /* ============================================================
@@ -53,7 +53,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 function findExe() {
-  const binRoot = join(ROOT, 'src', 'OpenAiWindowsTts', 'bin')
+  const binRoot = join(ROOT, 'src', 'VoxBridge', 'bin')
   if (!existsSync(binRoot)) return null
 
   for (const configuration of ['Debug', 'Release']) {

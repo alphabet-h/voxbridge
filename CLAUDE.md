@@ -1,4 +1,4 @@
-# openai-windows-tts
+# voxbridge
 
 Windows に最初から入っている音声を、OpenAI 互換の HTTP API で喋らせる常駐サーバ。C# / .NET 9。
 
@@ -27,11 +27,11 @@ Windows に最初から入っている音声を、OpenAI 互換の HTTP API で�
 | `node scripts/check-contract.mjs` | `docs/02` §6.2 の表 ↔ `Contract/ErrorCodes.cs` の照合 |
 | `powershell -NoProfile -File scripts\check.ps1` | BOM → ビルド → 整形 → テスト → 契約照合。**コミット前に必ず通す** |
 | `powershell -NoProfile -File scripts\check.ps1 -Fix` | 整形の差分をその場で直す |
-| `dotnet run --project src/OpenAiWindowsTts -- --port 8288` | 起動 |
-| `dotnet run --project src/OpenAiWindowsTts -- --port 8288 --verbose` | 合成 1 件につき 1 行ログを出して起動 |
-| `dotnet run --project src/OpenAiWindowsTts -- --list-voices` | この PC の声を見る |
+| `dotnet run --project src/VoxBridge -- --port 8288` | 起動 |
+| `dotnet run --project src/VoxBridge -- --port 8288 --verbose` | 合成 1 件につき 1 行ログを出して起動 |
+| `dotnet run --project src/VoxBridge -- --list-voices` | この PC の声を見る |
 | `node scripts/smoke.mjs` | サーバを起動して契約適合を叩く |
-| `dotnet publish src/OpenAiWindowsTts -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true` | 配布用の単一 exe |
+| `dotnet publish src/VoxBridge -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true` | 配布用の単一 exe |
 
 落とし穴:
 
@@ -45,11 +45,11 @@ Windows に最初から入っている音声を、OpenAI 互換の HTTP API で�
   stderr が `ErrorRecord` に包まれ、`$ErrorActionPreference = 'Stop'` だとそこで即死する。
   `node` は stderr に書くので、これを踏むとフックが exit 2 に到達しない。
   `Start-Process` でファイルへ分けて受ける（`.claude/hooks/cs-post-edit.ps1` が実例）
-- **stdout の 1 行目は `OPENAI_WINDOWS_TTS_PORT=<n>`。** ログを stdout に戻すと
+- **stdout の 1 行目は `VOXBRIDGE_PORT=<n>`。** ログを stdout に戻すと
   `scripts/smoke.mjs` が実ポートを読めなくなる。ログは全部 stderr へ出している
 - `--port 0` を渡すと OS が空きポートを割り当てる。テストと CI はこれを使う
 - **`dotnet run` は子プロセスを挟む。** 起動したサーバを確実に止めたいときは
-  `bin\...\openai-windows-tts.exe` を直接叩く
+  `bin\...\voxbridge.exe` を直接叩く
 - **リクエスト本文を Minimal API の自動バインドで受けない。** JSON が壊れているとき
   例外を投げずに**本文の無い 400** を書いて打ち切るので、契約の形で返せなくなる
   （`docs/08` §4.1）。`JsonSerializer.DeserializeAsync` で自分で読む
@@ -103,6 +103,16 @@ Program.cs                起動オプションの解釈 → 声の解決 → �
     契約上の有効値 `speed: 0.25` が `0.5` と同一の音になり、
     **防ごうとしていた「設定できたのに効かない」をクランプ自身が作る**
     （[docs/03](docs/03-windows-speech.md) §4）。
+
+11. **製品名に Microsoft の商標を入れない。`Directory.Build.props` の `Copyright` を消さない。**
+    単一 exe に Microsoft の再頒布可能コードを同梱しているので、Windows SDK ライセンス条項が
+    契約として効く。どちらもその条件（[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）。
+    README で「Windows の音声合成を使う」と書くのは**参照的な記述なので問題ない**。
+
+12. **生成した音声の利用範囲について「制限なし」と書かない。**
+    Microsoft は Windows の使用許諾条件にも SDK 条項にも**何も書いていない**（調査済み）。
+    ネット上の「無料の音声なら制限なし」は非公式な回答が出所で、一次資料ではない。
+    **根拠の無い安心を README に書くと、それを信じた利用者に責任が及ぶ。**
 
 ## いまやらないこと
 

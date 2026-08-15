@@ -11,7 +11,7 @@ user-invocable: false
 
 ## 1. 正規形は 48000 Hz / モノラル / 16bit
 
-唯一の出典は `src/OpenAiWindowsTts/Audio/CanonicalFormat`。**数値を直書きしない。**
+唯一の出典は `src/VoxBridge/Audio/CanonicalFormat`。**数値を直書きしない。**
 
 サンプルレートだけは**譲れない**。チャンネル数とビット深度は受け側で変換されることが多いが、
 サンプルレートを変換しないクライアントは珍しくなく、48000 以外を返すと
