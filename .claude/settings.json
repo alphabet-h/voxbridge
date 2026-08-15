@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(dotnet build:*)",
+      "PowerShell(dotnet test:*)",
+      "PowerShell(dotnet format:*)",
+      "PowerShell(dotnet run --project src/OpenAiWindowsTts:*)",
+      "PowerShell(dotnet publish:*)",
+      "PowerShell(node scripts/:*)",
+      "PowerShell(powershell -NoProfile -File scripts\\check.ps1:*)",
+      "Bash(node scripts/:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/cs-post-edit.ps1\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}

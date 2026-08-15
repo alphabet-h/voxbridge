@@ -1,0 +1,33 @@
+# tool data
+.remember/
+
+# この PC でしか意味を持たないものの置き場（リポジトリには入れない）
+.dev/
+
+# .NET のビルド成果物
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+
+# publish 出力
+publish/
+
+# env
+.env
+.env.*
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# editor / logs
+.idea/
+*.log
+
+# 検証中に出る一時音声（docs に貼るものだけ例外）
+*.wav
+!docs/**/*.wav

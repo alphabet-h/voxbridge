@@ -1,0 +1,308 @@
+# 02 HTTP 契約
+
+> **実装の正はこの文書。** コードと食い違ったらコードを直す。
+> §6.2 のエラーコード表は `scripts/check-contract.mjs` が `Contract/ErrorCodes.cs` と機械照合している。
+
+## 1. 何に互換なのか
+
+| 出典 | 何を借りているか |
+|---|---|
+| [openai-openapi](https://github.com/openai/openai-openapi) の `CreateSpeechRequest` | `POST /v1/audio/speech` のトップレベルのフィールド（`model` / `input` / `voice` / `response_format` / `speed` / `stream_format`） |
+| [Irodori-TTS-Server](https://github.com/Aratako/Irodori-TTS-Server) | 上記に拡張オブジェクトを 1 つ足す形。既定のキー名は `irodori` |
+
+**このサーバは OpenAI とも Irodori とも無関係の別実装で、API の形だけを合わせている。**
+
+「互換」の範囲は**このサーバが受けられる形**という意味で、
+OpenAI の API が持つ機能を全部持つという意味ではない（[01](01-overview.md) §5）。
+
+## 2. エンドポイント
+
+| メソッド | パス | 状態 |
+|---|---|---|
+| `GET` | `/health` | 実装済み |
+| `GET` | `/` | 実装済み（`--help` と同じテキストを返す） |
+| `POST` | `/v1/audio/speech` | **未実装** |
+| `GET` | `/v1/models` | **未実装** |
+| `GET` | `/v1/audio/voices` | **未実装** |
+
+未実装のパスは HTML のエラーページではなく、§6.1 の形の JSON と 404 を返す。
+JSON を前提にしたクライアントが HTML 本文を画面に出す、という壊れ方を避けるため。
+
+**ベース URL にパスの接頭辞が付く場合がある**（`http://host/tts` のような設定を許すクライアントがある）。
+このサーバ自身は接頭辞を持たないが、手前にリバースプロキシを置いて剥がす構成は成り立つ。
+
+## 3. `POST /v1/audio/speech` — リクエスト
+
+`Content-Type: application/json`。本文の上限は 4 MiB（超えたら 413 / `PAYLOAD_TOO_LARGE`）。
+
+### 3.1 トップレベル
+
+| フィールド | 型 | 必須 | 扱い |
+|---|---|---|---|
+| `input` | string | ○ | 喋らせる本文。空文字・空白だけなら 400 / `EMPTY_INPUT` |
+| `model` | string | | **声の選択に使う**（§3.3）。未知の値でもエラーにしない |
+| `voice` | string \| `{ "id": string }` | | 声の選択に使う（§3.3） |
+| `response_format` | string | | `wav` のみ。省略時は `wav`。他は 400 / `UNSUPPORTED_FORMAT` |
+| `speed` | number | | 0.25〜4.0。範囲外は 400 / `INVALID_SPEED`。写し方は §3.4 |
+| `stream_format` | string | | `audio` / `sse` を受けるが、**どちらでもバイナリを返す**（§4.2）。**400 にしない** |
+
+### 3.2 拡張オブジェクト
+
+トップレベルのオブジェクト型フィールド（既定のキー名は `irodori`）。
+**キー名を固定しない** — 拡張の名前空間を設定で変えられるクライアントがあるので、
+「知らないオブジェクト型フィールドが来たら拡張とみなす」という緩い受け方をする。
+
+中身は**すべて任意**で、**知らないキーは黙って捨てる**。
+
+| キー | 扱い |
+|---|---|
+| `caption` | 捨てる。Windows の音声合成に話し方を文章で指定する口が無い |
+| `seed` | 捨てる。生成モデルではないので毎回同じ音が出る（再現性はむしろ保証される） |
+| `num_steps` / `cfg_scale_text` / `cfg_scale_speaker` | 捨てる |
+| `ref_wav` / `ref_wavs` | 捨てる。**§6.3 に重要な注意がある** |
+| `chunking_enabled` / `chunk_min_chars` | 捨てる。分割は §4.3 の都合でこちらが決める |
+
+### 3.3 声の決め方
+
+**上から順に見て、最初に当たったもの**を使う。
+
+1. `voice` が `none` / 空文字 / 未指定の**いずれでもない**なら、その値で引く
+2. `model` で引く
+3. 起動オプション `--voice` の声
+4. Windows の既定の声
+
+`voice` に `none` が来たときに**エラーにしないこと**。「参照音声を使うので声の指定は無い」という
+意味で `none` を送ってくるクライアントがあり、そこで弾くと全リクエストが落ちる。
+
+`model` も見るのは、**`voice` を固定値でしか送れないクライアントがある**ため。
+`model` は設定画面から変えられることが多く、そこが実質唯一の選択口になる。
+
+引き方は**短い id と表示名の両方**を大文字小文字を問わずに受ける
+（`ayumi` / `Ayumi` / `Microsoft Ayumi`）。短い id の作り方は `Speech/VoiceCatalog.MakeId`。
+
+**指定されたのに見つからない声は 400 / `VOICE_NOT_FOUND`。**
+ここだけは黙って既定の声に落とさない — 声を選んだのに別の声で喋られるのは、
+「無い機能を無視する」（[01](01-overview.md) §3）とは別の話で、利用者の指定を裏切っている。
+
+### 3.4 `speed` の写し方
+
+Windows 側の話速（`SpeakingRate`）へそのまま渡す。ただし**有効域が違う**:
+
+| | 範囲 |
+|---|---|
+| このサーバが受ける `speed` | 0.25〜4.0（範囲外は 400 / `INVALID_SPEED`） |
+| Windows の `SpeakingRate` | 0.5〜6.0 |
+
+**0.25〜0.5 は Windows 側で表現できないので 0.5 にクランプする。**
+`SpeakingRate` の setter は値を検証せず、範囲外でも例外を投げない（[03](03-windows-speech.md) §4）ので、
+クランプはこちらでやらないと「設定できたのに効かない」になる。
+
+## 4. `POST /v1/audio/speech` — レスポンス
+
+### 4.1 成功
+
+```
+HTTP/1.1 200 OK
+Content-Type: audio/wav
+Transfer-Encoding: chunked
+```
+
+本文は **RIFF/WAVE 1 本**。フォーマットは §5 の正規形。
+
+### 4.2 SSE を実装しない
+
+`stream_format: "sse"` を要求されても、`Content-Type: audio/wav` でバイナリを返す。
+
+**理由**: 合成が速すぎる。19 文字の文（4.3 秒の音声）が 73 ms で出る（RTF ≒ 0.017）ので、
+進捗を刻んでも 1〜2 回しか出ない。SSE の実装・base64 の往復・チャンクごとの WAV 化という
+複雑さに見合わない。
+
+クライアント側は `Content-Type` で分岐するのが普通なので、これで壊れない。
+**将来 SSE を足すとしても、バイナリ経路は消さないこと。**
+
+### 4.3 ヘッダを先に返す（チャンク転送）
+
+`Content-Length` を出さず、**合成が全部終わる前にレスポンスヘッダを返す**。
+
+**理由**: クライアントには「リクエストを投げてから応答ヘッダが返るまで」の接続タイムアウトがある
+（15 秒前後が典型）。全部合成してからヘッダを書く実装だと、**長文を渡した瞬間に構造的にタイムアウトする**。
+ヘッダを先に返してしまえば、以降は「バイトが流れている限りタイムアウトしない」側の判定になる。
+
+具体的には:
+
+1. `input` を文単位に分ける
+2. **最初の 1 文だけ合成する**
+3. RIFF ヘッダを書いてレスポンスを開始する
+4. 残りの文を合成しながら PCM を流す
+
+2 を先にやるのは、**合成失敗を HTTP ステータスで返せる余地を残すため**。
+ヘッダを書いてしまうと 500 を返せない。最初の 1 文で落ちる失敗（未知の声、初期化の失敗）は
+ここで捕まる。1 文の合成は 100 ms 前後なので、接続タイムアウトには全く届かない。
+
+**RIFF と `data` の size は 0 で書く。** 長さが確定していないため。
+WAV のパーサは `data` の size が 0 か実バイト数を超えているとき「残り全部」として読むのが通例で、
+ストリーミング書き出しの WAV は普通この形になる。
+
+## 5. 音声フォーマット
+
+### 5.1 正規形
+
+**48,000 Hz / モノラル / 16bit PCM。** 唯一の出典は `Audio/CanonicalFormat`。
+
+Windows の音声合成が実際に吐くのは **16,000 Hz**（[03](03-windows-speech.md) §3）。
+**返す前に必ず 48 kHz へ上げる。**
+
+16 kHz のまま返さない理由は 2 つ:
+
+1. **サンプルレートを変換しないクライアントが珍しくない。** 正規形と違う WAV を受けると、
+   接続はできるのに生成のたびに失敗する、という原因の分かりにくい壊れ方をする
+2. 48 kHz は編集・書き出し系のツールが正規形として使う値で、**他の音と混ぜたときに揃う**
+
+### 5.2 リサンプルの方式
+
+比が**ちょうど 3 倍**の整数比なので、**ポリフェーズ FIR** を使う。
+
+| | |
+|---|---|
+| 位相数 | 3 |
+| 窓 | Blackman-Harris か Kaiser（β ≒ 8） |
+| タップ数 | 32〜48（位相あたり 11〜16） |
+| 遮断周波数 | 7,600 Hz 前後（元の Nyquist 8 kHz の少し下） |
+
+**線形補間は使わない。** 3 倍のゼロ挿入で 16 kHz と 32 kHz にイメージが立ち、
+線形補間の減衰では取り切れずに、金属的な折り返し音が残る。
+
+`Audio/` は WinRT にも ASP.NET にも依存しない純粋なコードにしておく。
+リサンプラの品質は、実際に信号を通して測る以外に検証しようがない。
+
+### 5.3 WAV の組み立て
+
+**44 バイトの標準ヘッダ**（`fmt` チャンク長 16）で書く。
+
+Windows 側から受け取る WAV は `fmt` チャンク長 18 の**46 バイトヘッダ**なので、
+**44 バイト決め打ちで読むと 2 バイトずれる**（[03](03-windows-speech.md) §3）。
+読むときは必ずチャンクを走査すること。
+
+## 6. エラー
+
+### 6.1 body の形
+
+```json
+{
+  "error": {
+    "message": "参照音声を読み込めませんでした",
+    "type": "invalid_request_error",
+    "code": "VOICE_NOT_FOUND",
+    "param": null
+  },
+  "detail": "voice='zzz' に対応する声がありません。使える id: ayumi, haruka, ichiro"
+}
+```
+
+- `error` は OpenAI 互換のクライアント向け、`detail` は FastAPI 風のクライアント向け。**両方出す**
+- `type` は 4xx で `invalid_request_error`、5xx で `server_error`
+- 503 には `Retry-After: 5` を付ける。読まないクライアントも多いが、付けて損は無い
+
+### 6.2 コード一覧
+
+<!-- check-contract:error-codes:begin -->
+
+| code | HTTP | いつ返すか |
+|---|---|---|
+| `EMPTY_INPUT` | 400 | `input` が空文字か空白だけ |
+| `INVALID_JSON` | 400 | リクエスト本文を JSON として解釈できない |
+| `INVALID_SPEED` | 400 | `speed` が 0.25〜4.0 の外 |
+| `UNSUPPORTED_FORMAT` | 400 | `response_format` が `wav` 以外 |
+| `VOICE_NOT_FOUND` | 400 | 指定された声がこの PC に無い（`none` と空文字はここに来ない） |
+| `PAYLOAD_TOO_LARGE` | 413 | リクエスト本文が 4 MiB を超えた |
+| `NOT_FOUND` | 404 | そのメソッドとパスは実装していない |
+| `ENGINE_BUSY` | 503 | 実行枠が空かないまま待ち時間の上限を超えた |
+| `ENGINE_INTERNAL` | 500 | 合成そのものが失敗した |
+
+<!-- check-contract:error-codes:end -->
+
+コードを増やすときは**この表と `Contract/ErrorCodes.cs` の両方**を直す。
+片方だけだと `scripts/check-contract.mjs` が落ちる。
+
+### 6.3 参照音声のパスを本文に入れない
+
+**`ref_wav` として渡されたパス文字列を、`message` にも `detail` にも絶対に含めないこと。**
+
+「エラー本文に自分が送った参照音声のパスが出た＝参照音声の問題だ」と判定するクライアントがある。
+無関係なエラー（本文が長すぎる、声が見つからない）が参照音声の失敗に化け、
+利用者は存在しない問題を延々と追うことになる。
+
+このサーバは `ref_wav` を捨てるので、そもそも本文に書く理由が無い。**ログにも出さない。**
+
+## 7. `GET /health`
+
+```json
+{
+  "status": "ok",
+  "model": "Windows 内蔵音声 / Microsoft Ayumi（参照音声・caption・seed は非対応）",
+  "model_loaded": true,
+  "gpu": { "device_name": "CPU（GPU 不使用）", "vram_used_gb": 0, "vram_total_gb": 0 },
+  "sample_rate": 48000,
+  "channels": 1,
+  "bit_depth": 16,
+  "response_formats": ["wav"],
+  "stream_formats": ["audio"],
+  "max_concurrent_synthesis": 1,
+  "running": 0,
+  "queued": 0
+}
+```
+
+| キー | なぜ出すのか |
+|---|---|
+| `model` | **このサーバが利用者に何かを伝えられる唯一の口**（[01](01-overview.md) §3）。非対応の機能をここで名乗る |
+| `gpu` | **省略しないこと。** GPU の情報が無いと、ループバック接続のときに自前で `nvidia-smi` を叩いて PC の GPU 名を出すクライアントがある。使ってもいない GPU が表示される。`vram_total_gb: 0` にしておけば VRAM 欄は空表示になる |
+| `max_concurrent_synthesis` | 設定画面に出す実装がある |
+| `sample_rate` / `channels` / `bit_depth` | 読まないクライアントも多いが、人が `curl` で確かめるときに効く |
+
+## 8. `GET /v1/models`
+
+```json
+{ "object": "list", "data": [{ "id": "windows-speech", "object": "model", "created": 0, "owned_by": "openai-windows-tts" }] }
+```
+
+**`/health` を持たないサーバを前提に、疎通確認だけをここでやるクライアントがある。**
+中身を読まず 2xx かどうかしか見ない実装が多いので、形さえ合っていればよい。
+
+## 9. `GET /v1/audio/voices`
+
+```json
+{ "object": "list", "data": [{ "id": "ayumi", "object": "voice", "display_name": "Microsoft Ayumi", "language": "ja-JP", "gender": "Female" }] }
+```
+
+このサーバ自身は使わない。**利用者が `voice` に何を書けばいいか調べるための口。**
+同じ内容は `--list-voices` でも出る。
+
+## 10. 認証・CORS
+
+| | |
+|---|---|
+| 認証 | **無し。** `Authorization: Bearer ...` が来ても読まずに無視する（付けてくるクライアントがある） |
+| CORS | **付けない。** ループバックで動くローカルサーバに `Access-Control-Allow-Origin: *` を付けると、任意の Web ページの JS からこのサーバを叩けるようになる。ブラウザから使う必要が出たら、そのときに許可するオリジンを絞って足す |
+| TLS | 無し。外に出すなら手前にリバースプロキシを置く |
+
+`GET` にも `Content-Type: application/json` を付けてくるクライアントがある。**弾かないこと。**
+
+## 11. キャンセルとタイムアウト
+
+**中断を通知する API は用意しない。** クライアントが接続を閉じるのが唯一の信号で、それで足りる。
+
+- 接続が閉じたら**合成を中断して実行枠を解放する**。ここを怠ると、連打されたぶんだけ
+  実行枠が埋まり、以降のリクエストが全部 503 になる
+- サーバ側からの読み取り／書き込みタイムアウトは Kestrel の既定に任せる
+
+## 12. 同時実行
+
+既定は **1**（起動オプション `--concurrency` で変えられる）。
+
+Windows の音声合成は GPU を使わず CPU も軽いので技術的にはもっと出せるが、
+既定を 1 にしておくと `/health` の `max_concurrent_synthesis` を読むクライアントの挙動が
+GPU 前提のエンジンと揃い、驚きが少ない。
+
+実行枠が空かないリクエストは待つ。待ち時間の上限を超えたら 503 / `ENGINE_BUSY` に
+`Retry-After: 5` を付けて返す。

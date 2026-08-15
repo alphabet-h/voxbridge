@@ -1,0 +1,63 @@
+# 整形の設定。`dotnet format whitespace` と IDE がこれを読む。
+#
+# 診断の重大度（dotnet_diagnostic.*.severity）はここで上げないこと。
+# Directory.Build.props で TreatWarningsAsErrors を入れているので、
+# ここで style 系を warning にすると「命名が気に入らない」だけでビルドが落ちる。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# PowerShell は CRLF、そして UTF-8 の BOM が必須。
+# Windows PowerShell 5.1 は BOM 無しの .ps1 を CP932 として読むので、
+# BOM を落とすと日本語の文字列リテラルがパース時点で壊れる。
+# scripts\check.ps1 が BOM の有無を検査している。
+[*.ps1]
+end_of_line = crlf
+charset = utf-8-bom
+indent_size = 4
+
+[*.{cs,csx}]
+indent_size = 4
+
+[*.{csproj,props,targets,sln}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# using は System を先頭に、グループ間に空行を入れない
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# ファイルスコープの namespace（入れ子を 1 段減らす）
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# 波括弧は次の行（.NET の標準）
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# var は型が右辺から明らかなときだけ
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# 式形式のメンバ
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+
+# 空白
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true

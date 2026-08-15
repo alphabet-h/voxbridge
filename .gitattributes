@@ -1,0 +1,14 @@
+# 改行を決め打ちする。core.autocrlf の設定に関わらず同じものが取り出せるようにする。
+* text=auto eol=lf
+
+# Windows PowerShell 5.1 向け。.editorconfig の [*.ps1] と揃える
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Visual Studio が CRLF を前提にする
+*.sln text eol=crlf
+
+*.wav binary
+*.png binary
+*.ico binary
