@@ -103,6 +103,9 @@ dotnet publish src/VoxBridge -c Release -r win-x64 --self-contained true `
 
 初回起動だけ圧縮の展開に 2.4 秒ほどかかります（2 回目以降は 0.4 秒）。
 
+**配るのは `publish\voxbridge.exe` 1 つだけです。** 同じフォルダに出る `.pdb` には
+ビルドしたマシンのソースの絶対パスが入っているので、一緒に配らないこと。
+
 設計と契約は [docs/](docs/) にあります。開発の作法は [CLAUDE.md](CLAUDE.md)。
 
 ## ライセンス
